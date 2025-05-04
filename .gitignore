@@ -1,0 +1,33 @@
+# IDE and OS files
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
+*.py[cod]
+
+# Environment files
+.env
+.env.local
+
+# Log files
+logs/
+*.log
+
+# Python build files
+build/
+dist/
+*.egg-info/
+
+# Test files
+*.swp
+*.bak
+
+# Local development files
+*.local
+
+# Database files
+*.db
+*.sqlite
+
+# Byte-compiled files
+*.pyc

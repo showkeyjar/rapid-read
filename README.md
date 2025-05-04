@@ -21,41 +21,23 @@
   - DeepSeek
   - Ollama本地模型
 
-## 安装指南
+## 启动方式
 
-1. 克隆本仓库
-```bash
-git clone https://github.com/your-repo/rapid-read.git
-cd rapid-read
-```
-
-2. 安装依赖
-```bash
-pip install -r requirements.txt
-```
-
-3. 配置环境变量
-创建`.env`文件并填写您的API密钥：
-```
-OPENAI_API_KEY=您的OpenAI密钥
-DEEPSEEK_API_KEY=您的DeepSeek密钥
-OLLAMA_MODEL=llama3  # 或其他本地模型
-```
-
-## 使用说明
-
-1. 启动后端服务
-```bash
-uvicorn main:app --reload
-```
-
-2. 启动前端界面
+只需运行单个命令：
 ```bash
 streamlit run app.py
 ```
 
-3. 在浏览器中打开`http://localhost:8501`
-4. 上传PDF文件并开始交互式阅读
+应用将在本地启动并自动打开浏览器窗口。
+
+## 配置说明
+
+在`.env`文件中配置您的API密钥：
+```ini
+OPENAI_API_KEY=您的OpenAI密钥
+DEEPSEEK_API_KEY=您的DeepSeek密钥  # 可选
+OLLAMA_MODEL=phi4-reasoning:plus  # 可选
+```
 
 ## 项目结构
 
