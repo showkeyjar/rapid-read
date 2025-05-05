@@ -39,6 +39,21 @@ DEEPSEEK_API_KEY=您的DeepSeek密钥  # 可选
 OLLAMA_MODEL=phi4-reasoning:plus  # 可选
 ```
 
+## 模型要求
+
+1. 确保已安装并运行Ollama服务
+2. 下载所需模型：
+```bash
+ollama pull phi4-mini-reasoning
+```
+3. 或者使用其他支持的模型，修改.env文件中的`OLLAMA_MODEL`变量
+
+支持的模型列表：
+- phi4-mini-reasoning (推荐)
+- mistral
+- llama2
+- gemma:7b
+
 ## 项目结构
 
 ```
