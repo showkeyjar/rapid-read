@@ -480,16 +480,20 @@ def generate_with_retry(prompt: str, level: int, provider: str, max_retries: int
             time.sleep(5 * (attempt + 1))
 
 def process_chunk_parallel(chunk: str, chunk_id: int, provider: str) -> tuple[int, str]:
-    """增强版分块处理"""
-    for attempt in range(3):  # 最多重试3次
+    """强制中文输出的分块处理，英文自动重试"""
+    for attempt in range(3):
         try:
             model_manager.ensure_model_loaded(provider)
-            
+            prompt = (
+                "你是一名中文专业文献总结助手。"
+                "请用简体中文、结构化、条理清晰地总结以下内容（限300字）：\n\n"
+                f"{chunk}"
+            )
             response = requests.post(
                 f"{os.getenv('OLLAMA_API_BASE')}/api/generate",
                 json={
                     "model": os.getenv("OLLAMA_MODEL"),
-                    "prompt": f"请用简体中文总结以下内容(限300字):\n\n{chunk}",
+                    "prompt": prompt,
                     "options": {
                         "temperature": 0.2,
                         "num_ctx": 2048
@@ -497,7 +501,6 @@ def process_chunk_parallel(chunk: str, chunk_id: int, provider: str) -> tuple[in
                 },
                 timeout=OLLAMA_TIMEOUT
             )
-            
             result = ""
             for line in response.iter_lines():
                 if line:
@@ -505,18 +508,15 @@ def process_chunk_parallel(chunk: str, chunk_id: int, provider: str) -> tuple[in
                     result += data.get("response", "")
                     if data.get("done", False):
                         break
-            
+            # 检查是否为英文，若是则报错或重试
+            if re.search(r'[a-zA-Z]{8,}', result) and not re.search(r'[\u4e00-\u9fa5]', result):
+                raise ValueError("模型返回英文摘要，重试")
             return (chunk_id, result.strip() or "[无有效摘要]")
-            
-        except requests.exceptions.Timeout:
-            logger.warning(f"分块 {chunk_id} 超时 (尝试 {attempt+1}/3)")
-            if attempt == 2:
-                return (chunk_id, "[错误] 处理超时")
-            time.sleep(OLLAMA_RETRY_DELAY * (attempt+1))
-            
         except Exception as e:
-            logger.error(f"分块 {chunk_id} 处理失败: {str(e)}")
-            return (chunk_id, f"[处理失败: {str(e)}]")
+            logger.warning(f"分块 {chunk_id} 处理失败: {str(e)}")
+            if attempt == 2:
+                return (chunk_id, f"[处理失败: {str(e)}]")
+            time.sleep(OLLAMA_RETRY_DELAY * (attempt+1))
 
 def get_optimal_chunk_size(text: str) -> int:
     """动态计算最佳分块大小"""
@@ -681,22 +681,54 @@ def generate_final_summary(section_summaries: list[str]) -> str:
         logger.error(f"最终摘要生成错误: {str(e)}")
         return "[摘要生成异常]"
 
-def display_summary_result(result):
-    """显示分层摘要结果"""
-    tab1, tab2, tab3 = st.tabs(["最终摘要", "章节", "分块"])
-    
-    with tab1:
+def display_drilldown_summary(result):
+    # 初始化状态
+    if "current_level" not in st.session_state:
+        st.session_state.current_level = 1
+    if "selected_section" not in st.session_state:
+        st.session_state.selected_section = 0
+    if "selected_chunk" not in st.session_state:
+        st.session_state.selected_chunk = 0
+
+    # 1级：首页/总览
+    if st.session_state.current_level == 1:
+        st.markdown("## 最终摘要")
         st.markdown(result['final_summary'])
-    
-    with tab2:
-        for section in result['sections']:
-            with st.expander(section['title'], expanded=False):
-                st.markdown(section['content'])
-    
-    with tab3:
-        for chunk_id, chunk in enumerate(result['chunks']):
-            with st.expander(f"分块 {chunk_id+1}", expanded=False):
-                st.text(chunk[:1000] + ("..." if len(chunk)>1000 else ""))
+        st.markdown("## 章节摘要")
+        for idx, section in enumerate(result['sections']):
+            st.markdown(f"**{section['title']}**\n\n{section['content']}")
+            if st.button(f"下钻到{section['title']}", key=f"drill_section_{idx}"):
+                st.session_state.selected_section = idx
+                st.session_state.current_level = 2
+                st.rerun()
+
+    # 2级：章节下分块摘要
+    elif st.session_state.current_level == 2:
+        section = result['sections'][st.session_state.selected_section]
+        st.markdown(f"### {section['title']} 摘要")
+        st.markdown(section['content'])
+        st.markdown("---")
+        st.markdown("#### 分块摘要")
+        for i, idx in enumerate(section['chunk_ids']):
+            chunk_summary = next((s for j, s in result['summaries'] if j == idx), None)
+            if chunk_summary:
+                st.markdown(f"**分块 {idx+1}**\n{chunk_summary}")
+                if st.button(f"下钻到分块 {idx+1}", key=f"drill_chunk_{idx}"):
+                    st.session_state.selected_chunk = idx
+                    st.session_state.current_level = 3
+                    st.rerun()
+        if st.button("返回章节总览"):
+            st.session_state.current_level = 1
+            st.rerun()
+
+    # 3级：分块原文
+    elif st.session_state.current_level == 3:
+        chunk_id = st.session_state.selected_chunk
+        st.markdown(f"### 分块 {chunk_id+1} 原文")
+        st.text(result['chunks'][chunk_id][:2000])
+        if st.button("返回上一层（章节）"):
+            st.session_state.current_level = 2
+            st.rerun()
 
 # 初始化会话状态
 if 'summaries' not in st.session_state:
@@ -756,7 +788,7 @@ if uploaded_file:
         status_container.success("处理完成！")
         
         # 显示结果导航
-        display_summary_result(result)
+        display_drilldown_summary(result)
         
     except Exception as e:
         st.error(f"处理失败: {str(e)}")
@@ -771,8 +803,8 @@ col1, col2 = st.columns(2)
 with col1:
     if st.button("← 上一层级") and st.session_state.current_level > 1:
         st.session_state.current_level -= 1
-        st.experimental_rerun()
+        st.rerun()
 with col2:
     if st.button("重置到第一层"):
         st.session_state.current_level = 1
-        st.experimental_rerun()
+        st.rerun()
